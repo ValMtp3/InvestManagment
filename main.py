@@ -1,55 +1,92 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
-from mysql.connector import connect, Error
-from db import mydb, cursor, close_db
+from db import get_db_cursor, close_db, Error
+import threading
+import queue
+import logging
 from Login import LoginWindow
+from decimal import Decimal
+from datetime import datetime
 
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def fetch_investments(email):
+def fetch_user_id(cursor, email):
     try:
+        logging.debug(f"Fetching user id for email: {email}")
         cursor.execute("SELECT id_utilisateur FROM utilisateur WHERE email = %s", (email,))
         user_id = cursor.fetchone()[0]
+        logging.debug(f"Fetched user id: {user_id}")
+        return user_id
+    except Exception as e:
+        logging.error(f"Error fetching user id: {e}")
+        return None
+
+def fetch_investments(cursor, email):
+    try:
+        logging.debug(f"Fetching investments for email: {email}")
+        user_id = fetch_user_id(cursor, email)
+        if user_id is None:
+            return []
         cursor.execute("SELECT * FROM Investissement WHERE id_utilisateur = %s", (user_id,))
         investments = cursor.fetchall()
+        logging.debug(f"Fetched investments: {investments}")
         return investments
     except Error as e:
-        print(f"Error: {e}")
+        logging.error(f"Error fetching investments: {e}")
         return []
 
-
-def fetch_transactions(email):
+def fetch_transactions(cursor, email):
     try:
-        cursor.execute("SELECT id_utilisateur FROM utilisateur WHERE email = %s", (email,))
-        user_id = cursor.fetchone()[0]
+        logging.debug(f"Fetching transactions for email: {email}")
+        user_id = fetch_user_id(cursor, email)
+        if user_id is None:
+            return []
         cursor.execute("SELECT * FROM Transaction WHERE id_utilisateur = %s", (user_id,))
         transactions = cursor.fetchall()
+        logging.debug(f"Fetched transactions: {transactions}")
         return transactions
     except Error as e:
-        print(f"Error: {e}")
+        logging.error(f"Error fetching transactions: {e}")
         return []
 
+def add_transaction_thread(id_investissement, date, prix, quantite, queue):
+    logging.debug(f"Starting thread to add transaction: {id_investissement}, {date}, {prix}, {quantite}")
+    threading.Thread(target=_add_transaction, args=(id_investissement, date, prix, quantite, queue)).start()
 
-def add_transaction(id_investissement, date, prix, quantite):
+def _add_transaction(id_investissement, date, prix, quantite, queue):
+    mydb, cursor = get_db_cursor()
+    if mydb is None or cursor is None:
+        logging.error("Database connection failed in thread")
+        queue.put(("error", "Erreur de connexion à la base de données"))
+        return
     try:
+        logging.debug(f"Inserting transaction: {id_investissement, date, prix, quantite}")
         sql = "INSERT INTO `Transaction` (`id_investissement`, `date`, `prix`, `quantite`) VALUES (%s, %s, %s, %s)"
         values = (id_investissement, date, prix, quantite)
         cursor.execute(sql, values)
         mydb.commit()
-        messagebox.showinfo("Succès", "Transaction ajoutée avec succès")
+        logging.debug("Transaction inserted successfully")
+        queue.put(("success", "Transaction ajoutée avec succès"))
     except Error as e:
-        messagebox.showerror("Erreur", f"Erreur lors de l'ajout de la transaction: {e}")
-
+        logging.error(f"Erreur lors de l'ajout de la transaction: {e}")
+        queue.put(("error", f"Erreur lors de l'ajout de la transaction: {e}"))
+    finally:
+        close_db(mydb, cursor)
 
 class InvestmentApp:
     def __init__(self, root, email):
+        logging.debug("Initializing InvestmentApp")
         self.root = root
         self.email = email
+        self.queue = queue.Queue()
         self.root.title("Gestion d'Investissements")
         self.create_widgets()
         self.load_investments()
         self.load_transactions()
+        self.check_queue()
 
     def create_widgets(self):
+        logging.debug("Creating widgets")
         self.investment_treeview = ttk.Treeview(self.root, columns=("Nom", "Type", "Valeur"), show="headings")
         self.investment_treeview.pack(pady=10)
         self.investment_treeview.heading("Nom", text="Nom")
@@ -71,88 +108,125 @@ class InvestmentApp:
         self.logout_button = tk.Button(self.root, text="Déconnexion", command=self.logout)
         self.logout_button.pack()
 
-        self.add_transaction_button = tk.Button(self.root, text="Ajouter une transaction",
-                                                command=self.open_add_transaction_window)
+        self.add_transaction_button = tk.Button(self.root, text="Ajouter une transaction", command=self.open_add_transaction_window)
         self.add_transaction_button.pack()
 
     def load_transactions(self):
-        transactions = fetch_transactions(self.email)
-        self.transaction_treeview.delete(*self.transaction_treeview.get_children())
-        for transaction in transactions:
-            self.transaction_treeview.insert("", "end", values=transaction[3:])
+        logging.debug("Loading transactions")
+        mydb, cursor = get_db_cursor()
+        if mydb is None or cursor is None:
+            return
+        try:
+            transactions = fetch_transactions(cursor, self.email)
+            self.transaction_treeview.delete(*self.transaction_treeview.get_children())
+            for transaction in transactions:
+                self.transaction_treeview.insert("", "end", values=transaction[3:])
+        except Exception as e:
+            logging.error(f"Error loading transactions: {e}")
+        finally:
+            close_db(mydb, cursor)
 
     def logout(self):
-        try:
-            self.root.destroy()
-            root = tk.Tk()
-            app = LoginWindow(root)
-            root.mainloop()
-        except Exception as e:
-            print(f"Error in logout: {e}")
+        logging.debug("Logging out")
+        self.root.destroy()
 
     def load_investments(self):
-        investments = fetch_investments(self.email)
-        self.investment_treeview.delete(*self.investment_treeview.get_children())
-        for investment in investments:
-            self.investment_treeview.insert("", "end", values=investment[2:])
+        logging.debug("Loading investments")
+        mydb, cursor = get_db_cursor()
+        if mydb is None or cursor is None:
+            return
+        try:
+            investments = fetch_investments(cursor, self.email)
+            self.investment_treeview.delete(*self.investment_treeview.get_children())
+            for investment in investments:
+                self.investment_treeview.insert("", "end", values=investment[2:])
+        except Exception as e:
+            logging.error(f"Error loading investments: {e}")
+        finally:
+            close_db(mydb, cursor)
 
     def open_add_transaction_window(self):
-        try:
-            self.new_window = tk.Toplevel(self.root)
-            self.new_window.title("Ajouter une transaction")
+        logging.debug("Opening add transaction window")
+        self.new_window = tk.Toplevel(self.root)
+        self.new_window.title("Ajouter une transaction")
 
-            tk.Label(self.new_window, text="ID Investissement").grid(row=0, column=0)
-            self.id_investissement_entry = tk.Entry(self.new_window)
-            self.id_investissement_entry.grid(row=0, column=1)
+        tk.Label(self.new_window, text="ID Investissement:").pack()
+        self.id_investissement_entry = tk.Entry(self.new_window)
+        self.id_investissement_entry.pack()
 
-            tk.Label(self.new_window, text="Date (YYYY-MM-DD)").grid(row=1, column=0)
-            self.date_entry = tk.Entry(self.new_window)
-            self.date_entry.grid(row=1, column=1)
+        tk.Label(self.new_window, text="Date (YYYY-MM-DD):").pack()
+        self.date_entry = tk.Entry(self.new_window)
+        self.date_entry.pack()
 
-            tk.Label(self.new_window, text="Prix").grid(row=2, column=0)
-            self.prix_entry = tk.Entry(self.new_window)
-            self.prix_entry.grid(row=2, column=1)
+        tk.Label(self.new_window, text="Prix:").pack()
+        self.prix_entry = tk.Entry(self.new_window)
+        self.prix_entry.pack()
 
-            tk.Label(self.new_window, text="Quantité").grid(row=3, column=0)
-            self.quantite_entry = tk.Entry(self.new_window)
-            self.quantite_entry.grid(row=3, column=1)
+        tk.Label(self.new_window, text="Quantité:").pack()
+        self.quantite_entry = tk.Entry(self.new_window)
+        self.quantite_entry.pack()
 
-            tk.Button(self.new_window, text="Ajouter", command=self.add_transaction).grid(row=4, column=0, columnspan=2)
-        except Exception as e:
-            print(f"Error in open_add_transaction_window: {e}")
+        tk.Button(self.new_window, text="Ajouter", command=self.add_transaction).pack()
 
     def add_transaction(self):
+        logging.debug("Adding transaction")
         try:
             id_investissement = self.id_investissement_entry.get()
             date = self.date_entry.get()
             prix = self.prix_entry.get()
             quantite = self.quantite_entry.get()
 
-            # Check that all fields are filled
             if not id_investissement or not date or not prix or not quantite:
-                messagebox.showerror("Erreur", "Veuillez remplir tous les champs.")
+                messagebox.showerror("Erreur", "Tous les champs doivent être remplis.")
                 return
 
-            # Check that id_investissement, prix and quantite are numbers
-            if not id_investissement.isdigit() or not prix.replace('.', '', 1).isdigit() or not quantite.replace('.', '', 1).isdigit():
-                messagebox.showerror("Erreur", "L'ID d'investissement, le prix et la quantité doivent être des nombres.")
+            try:
+                id_investissement = int(id_investissement)
+                prix = Decimal(prix)
+                quantite = int(quantite)
+                date = datetime.strptime(date, "%Y-%m-%d").date()
+            except ValueError:
+                messagebox.showerror("Erreur", "Veuillez entrer des valeurs valides.")
                 return
 
-            add_transaction(id_investissement, date, prix, quantite)
+            add_transaction_thread(id_investissement, date, prix, quantite, self.queue)
             self.new_window.destroy()
         except Exception as e:
-            print(f"Error in add_transaction: {e}")
-            messagebox.showerror("Erreur", f"Erreur lors de l'ajout de la transaction: {e}")
+            logging.error(f"Erreur lors de l'ajout de la transaction : {e}")
+            messagebox.showerror("Erreur", f"Erreur lors de l'ajout de la transaction : {e}")
 
+    def check_queue(self):
+        try:
+            while not self.queue.empty():
+                msg_type, msg = self.queue.get()
+                if msg_type == "success":
+                    messagebox.showinfo("Succès", msg)
+                    logging.info(f"Success: {msg}")
+                elif msg_type == "error":
+                    messagebox.showerror("Erreur", msg)
+                    logging.error(f"Error: {msg}")
+        except Exception as e:
+            logging.error(f"Error in check_queue: {e}")
+        finally:
+            self.root.after(100, self.check_queue)
 
 def run_main(email):
-    root = tk.Tk()
-    app = InvestmentApp(root, email)
-    root.mainloop()
-    close_db()
-
+    logging.debug("Running main application")
+    try:
+        root = tk.Tk()
+        app = InvestmentApp(root, email)
+        root.mainloop()
+    except Exception as e:
+        logging.error(f"Error in run_main: {e}")
+    finally:
+        close_db()
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = LoginWindow(root)
-    root.mainloop()
+    logging.debug("Starting application")
+    try:
+        root = tk.Tk()
+        app = LoginWindow(root)
+        root.mainloop()
+    except Exception as e:
+        logging.error(f"Error in __main__: {e}")
+

@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
-from db import cursor
+from db import get_db_cursor, close_db, Error
+import logging
 
 class LoginWindow:
     def __init__(self, root):
@@ -31,8 +32,17 @@ class LoginWindow:
             messagebox.showerror("Erreur", "Email ou mot de passe incorrect")
 
     def check_login(self, email, password):
-        cursor.execute("SELECT * FROM utilisateur WHERE email = %s AND password = %s", (email, password))
-        return cursor.fetchone() is not None
+        mydb, cursor = get_db_cursor()
+        if mydb is None or cursor is None:
+            return False
+        try:
+            cursor.execute("SELECT * FROM utilisateur WHERE email = %s AND password = %s", (email, password))
+            return cursor.fetchone() is not None
+        except Error as e:
+            logging.error(f"Erreur lors de la vérification des identifiants: {e}")
+            return False
+        finally:
+            close_db(mydb, cursor)
 
 if __name__ == "__main__":
     root = tk.Tk()
