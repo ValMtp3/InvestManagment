@@ -51,7 +51,9 @@ def fetch_transactions(cursor, email):
 
 def add_transaction_thread(id_investissement, date, prix, quantite, queue):
     logging.debug(f"Starting thread to add transaction: {id_investissement}, {date}, {prix}, {quantite}")
-    threading.Thread(target=_add_transaction, args=(id_investissement, date, prix, quantite, queue)).start()
+    thread = threading.Thread(target=_add_transaction, args=(id_investissement, date, prix, quantite, queue))
+    thread.daemon = True  # Permet de tuer le thread si le programme se termine
+    thread.start()
 
 def _add_transaction(id_investissement, date, prix, quantite, queue):
     mydb, cursor = get_db_cursor()
@@ -59,6 +61,7 @@ def _add_transaction(id_investissement, date, prix, quantite, queue):
         logging.error("Database connection failed in thread")
         queue.put(("error", "Erreur de connexion à la base de données"))
         return
+
     try:
         logging.debug(f"Inserting transaction: {id_investissement, date, prix, quantite}")
         sql = "INSERT INTO `Transaction` (`id_investissement`, `date`, `prix`, `quantite`) VALUES (%s, %s, %s, %s)"
@@ -71,7 +74,7 @@ def _add_transaction(id_investissement, date, prix, quantite, queue):
         logging.error(f"Erreur lors de l'ajout de la transaction: {e}")
         queue.put(("error", f"Erreur lors de l'ajout de la transaction: {e}"))
     finally:
-        close_db(mydb, cursor)
+        close_db(mydb, cursor)  # Fermer la connexion à la base de données
 
 class InvestmentApp:
     def __init__(self, root, email):
@@ -111,37 +114,40 @@ class InvestmentApp:
         self.add_transaction_button = tk.Button(self.root, text="Ajouter une transaction", command=self.open_add_transaction_window)
         self.add_transaction_button.pack()
 
+
     def load_transactions(self):
         logging.debug("Loading transactions")
-        mydb, cursor = get_db_cursor()
-        if mydb is None or cursor is None:
-            return
         try:
+            mydb, cursor = get_db_cursor()
+            if mydb is None or cursor is None:
+                return
             transactions = fetch_transactions(cursor, self.email)
             self.transaction_treeview.delete(*self.transaction_treeview.get_children())
             for transaction in transactions:
                 self.transaction_treeview.insert("", "end", values=transaction[3:])
         except Exception as e:
             logging.error(f"Error loading transactions: {e}")
+            messagebox.showerror("Erreur", f"Erreur lors du chargement des transactions: {e}")
         finally:
             close_db(mydb, cursor)
 
     def logout(self):
         logging.debug("Logging out")
-        self.root.destroy()
+        self.root.destroy()  # Fermer la fenêtre principale
 
     def load_investments(self):
         logging.debug("Loading investments")
-        mydb, cursor = get_db_cursor()
-        if mydb is None or cursor is None:
-            return
         try:
+            mydb, cursor = get_db_cursor()
+            if mydb is None or cursor is None:
+                return
             investments = fetch_investments(cursor, self.email)
             self.investment_treeview.delete(*self.investment_treeview.get_children())
             for investment in investments:
                 self.investment_treeview.insert("", "end", values=investment[2:])
         except Exception as e:
             logging.error(f"Error loading investments: {e}")
+            messagebox.showerror("Erreur", f"Erreur lors du chargement des investissements: {e}")
         finally:
             close_db(mydb, cursor)
 
@@ -190,7 +196,7 @@ class InvestmentApp:
                 return
 
             add_transaction_thread(id_investissement, date, prix, quantite, self.queue)
-            self.new_window.destroy()
+            self.new_window.destroy()  # Fermer la fenêtre de dialogue
         except Exception as e:
             logging.error(f"Erreur lors de l'ajout de la transaction : {e}")
             messagebox.showerror("Erreur", f"Erreur lors de l'ajout de la transaction : {e}")
