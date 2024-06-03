@@ -4,6 +4,7 @@ from db import get_db_cursor, close_db, Error
 import logging
 from customtkinter import CTkEntry, CTkButton
 
+
 class LoginWindow:
     def __init__(self, root):
         self.root = root
@@ -14,11 +15,11 @@ class LoginWindow:
     def create_widgets(self):
         # Crée les widgets pour l'email et le mot de passe
         tk.Label(self.root, text="Email").grid(row=0, column=0)
-        self.email_entry = CTkEntry(self.root,  border_width=2)
+        self.email_entry = CTkEntry(self.root, border_width=2)
         self.email_entry.grid(row=0, column=1, padx=10, pady=10)
 
         tk.Label(self.root, text="Mot de passe").grid(row=1, column=0)
-        self.password_entry = CTkEntry(self.root, show="*",  border_width=2)
+        self.password_entry = CTkEntry(self.root, show="*", border_width=2)
         self.password_entry.grid(row=1, column=1, padx=10, pady=10)
 
         # Crée le bouton de connexion
