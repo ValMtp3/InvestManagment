@@ -31,3 +31,20 @@ def fetch_transactions(cursor, email):
     except Error as e:
         logging.error(f"Error fetching transactions: {e}")
         return []
+
+def calculate_roi(cursor, id_investissement):
+    try:
+        cursor.execute("SELECT prix_achat FROM Transaction WHERE id_investissement = %s", (id_investissement,))
+        transactions = cursor.fetchall()
+        cursor.execute("SELECT cours_actuel FROM Cours_actuel WHERE id_investissement = %s", (id_investissement,))
+        cours_actuel = cursor.fetchone()[0]
+        roi_percentages = []
+        for transaction in transactions:
+            prix_achat = transaction[0]
+            if prix_achat is not None and cours_actuel is not None:  # Ensure both prices are not None
+                roi = (cours_actuel - prix_achat) / prix_achat * 100
+                roi_percentages.append(roi)
+        return round(sum(roi_percentages) / len(roi_percentages), 2) if roi_percentages else None
+    except Exception as e:
+        logging.error(f"Error calculating ROI: {e}")
+        return None
