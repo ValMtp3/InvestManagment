@@ -8,8 +8,6 @@ def load_investments_and_transactions(app):
     mydb, cursor = get_db_cursor()
     investments = fetch_investments(cursor, app.email)
     app.treeview.delete(*app.treeview.get_children())
-    app.treeview.tag_configure("oddrow", background="white")
-    app.treeview.tag_configure("evenrow", background="lightgrey")
     for i, investment in enumerate(investments):
         total_investment = 0
         cursor.execute("SELECT cours_actuel FROM Cours_actuel WHERE id_investissement = %s", (investment[0],))
@@ -26,7 +24,8 @@ def load_investments_and_transactions(app):
             roi_tag = "unknown"
         color_tag = "oddrow" if i % 2 else "evenrow"
         inv_item = app.treeview.insert("", "end", text=investment[2] + " (" + str(cours_actuel) + "\u20AC)",
-                                       values=(investment[3], investment[4], "", "", "", "", "{:.2f}%".format(roi) if roi is not None else "N/A"),
+                                       values=(investment[3], investment[4], "", "", "", "",
+                                               "{:.2f}%".format(roi) if roi is not None else "N/A"),
                                        tags=(color_tag, "investment", roi_tag, investment[0]))
         transactions = fetch_transactions(cursor, app.email)
         for transaction in transactions:
@@ -92,3 +91,5 @@ def update_form(self, *args):
         self.secteur_activite_entry.grid_remove()
 
     self.update_investment_dropdown()
+
+

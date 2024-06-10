@@ -69,3 +69,54 @@ class InvestmentApp:
         root = tk.Tk()
         app = LoginWindow(root)
         root.mainloop()
+
+    def edit_selected(app):
+        selected_items = app.treeview.selection()
+
+        if not selected_items:
+            messagebox.showwarning("Modification", "Aucun élément sélectionné pour la modification.")
+            return
+
+        for item in selected_items:
+            item_tags = app.treeview.item(item, "tags")
+            if "investment" in item_tags:
+                id_investment = app.treeview.item(item, "values")[0]
+                open_edit_investment_form(app, id_investment)
+            elif "transaction" in item_tags:
+                id_transaction = app.treeview.item(item, "values")[0]
+                open_edit_transaction_form(app, id_transaction)
+
+
+def open_edit_investment_form(app, id_investment):
+    mydb, cursor = get_db_cursor()
+    cursor.execute("SELECT * FROM Investissement WHERE id_investissement = %s", (id_investment,))
+    investment = cursor.fetchone()
+    close_db(mydb, cursor)
+    app.nom_entreprise_entry.insert(0, investment[2])
+    app.symbole_boursier_entry.insert(0, investment[3])
+    app.secteur_activite_entry.insert(0, investment[4])
+
+
+def open_edit_transaction_form(app, id_transaction):
+    mydb, cursor = get_db_cursor()
+    cursor.execute("SELECT * FROM Transaction WHERE id_transaction = %s", (id_transaction,))
+    transaction = cursor.fetchone()
+    close_db(mydb, cursor)
+    app.date_entry.insert(0, transaction[3])
+    app.prix_entry.insert(0, transaction[4])
+    app.quantite_entry.insert(0, transaction[5])
+
+
+def save_changes(app, id_investment=None, id_transaction=None):
+    mydb, cursor = get_db_cursor()
+    if id_investment:
+        cursor.execute(
+            "UPDATE Investissement SET nom_entreprise = %s, symbole_boursier = %s, secteur_activite = %s WHERE id_investissement = %s",
+            (app.nom_entreprise_entry.get(), app.symbole_boursier_entry.get(), app.secteur_activite_entry.get(),
+             id_investment))
+    elif id_transaction:
+        cursor.execute("UPDATE Transaction SET date = %s, prix_achat = %s, quantite = %s WHERE id_transaction = %s",
+                       (app.date_entry.get(), app.prix_entry.get(), app.quantite_entry.get(), id_transaction))
+    mydb.commit()
+    close_db(mydb, cursor)
+    app.load_investments_and_transactions()
