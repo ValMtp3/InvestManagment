@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import messagebox
 from customtkinter import CTkEntry, CTkButton
 from db_utils import get_db_cursor, close_db
+import re
+import bcrypt
 
 class LoginWindow:
     def __init__(self, root):
@@ -22,6 +24,9 @@ class LoginWindow:
         self.login_button = CTkButton(self.root, text="Se connecter", command=self.login, corner_radius=10)
         self.login_button.grid(row=2, column=0, columnspan=2, pady=10)
 
+        self.create_account_button = CTkButton(self.root, text="Créer un compte", command=self.create_account, corner_radius=10)
+        self.create_account_button.grid(row=3, column=0, columnspan=2, pady=10)
+
     def login(self, event=None):
         email = self.email_entry.get()
         password = self.password_entry.get()
@@ -38,9 +43,45 @@ class LoginWindow:
         if mydb is None or cursor is None:
             return False
         try:
-            cursor.execute("SELECT * FROM utilisateur WHERE email = %s AND password = %s", (email, password))
-            return cursor.fetchone() is not None
+            cursor.execute("SELECT password FROM utilisateur WHERE email = %s", (email,))
+            result = cursor.fetchone()
+            if result and bcrypt.checkpw(password.encode('utf-8'), result[0].encode('utf-8')):
+                return True
+            else:
+                return False
         except Exception as e:
             return False
+        finally:
+            close_db(mydb, cursor)
+
+    def is_valid_email(self, email):
+        email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        return re.match(email_regex, email) is not None
+
+    def create_account(self):
+        email = self.email_entry.get()
+        password = self.password_entry.get()
+
+        if email == "" or password == "":
+            messagebox.showwarning("Attention", "Veuillez remplir tous les champs")
+            return
+
+        if not self.is_valid_email(email):
+            messagebox.showwarning("Attention", "Adresse email invalide")
+            return
+
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        mydb, cursor = get_db_cursor()
+        if mydb is None or cursor is None:
+            messagebox.showerror("Erreur", "Erreur de connexion à la base de données")
+            return
+
+        try:
+            cursor.execute("INSERT INTO utilisateur (email, password) VALUES (%s, %s)", (email, hashed_password))
+            mydb.commit()
+            messagebox.showinfo("Succès", "Compte créé avec succès")
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Erreur lors de la création du compte : {e}")
         finally:
             close_db(mydb, cursor)
