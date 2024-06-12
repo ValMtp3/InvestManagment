@@ -52,6 +52,9 @@ def create_buttons(app):
     app.delete_button = CTkButton(app.root, text="Supprimer", command=app.confirm_delete, corner_radius=10,
                                   fg_color="red")
     app.delete_button.pack(pady=10)
+    # Ajout du bouton Modifier
+    app.edit_button = CTkButton(app.root, text="Modifier", command=app.edit_selected, corner_radius=10, fg_color="blue")
+    app.edit_button.pack(pady=10)
 
 
 def create_add_transaction_widgets(app):

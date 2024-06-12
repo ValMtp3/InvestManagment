@@ -30,11 +30,12 @@ def load_investments_and_transactions(app):
         transactions = fetch_transactions(cursor, app.email)
         for transaction in transactions:
             if transaction[1] == investment[0]:
+                id_transaction = transaction[0]
                 total = transaction[4] * transaction[5]
                 total_investment += total
                 gain_perte_percentage = ((cours_actuel - transaction[4]) / transaction[4]) * 100
                 gain_perte_tag = "gain" if gain_perte_percentage >= 0 else "perte"
-                app.treeview.insert(inv_item, "end", text="Transaction",
+                app.treeview.insert(inv_item, "end", text=f"Transaction {id_transaction}",
                                     values=("", transaction[3], "", str(transaction[4]) + "\u20AC", transaction[5],
                                             str(total) + "\u20AC", "{:.2f}%".format(gain_perte_percentage)),
                                     tags=(color_tag, "transaction", gain_perte_tag, transaction[0]))
